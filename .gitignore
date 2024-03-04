@@ -1,0 +1,8 @@
+## for pycharm project & run files
+build/
+dist/
+dump/
+.idea/
+__pycache__/
+*.log
+*.spec
