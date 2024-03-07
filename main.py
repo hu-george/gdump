@@ -5,17 +5,17 @@ import base64
 import logging
 import glogging
 
-import rxdc_ui
-import rxdc
+import gdump_ui
+import gdump
 import gcom
 
 logger = logging.getLogger(__name__)
 
 try:
-    glogging.log2stdout(logger, logging.INFO)
-    # glogging.log2file(logger, logging.INFO)
-    rxdc_ui.logger = logger
-    rxdc.logger = logger
+    # glogging.log2stdout(logger, logging.INFO)
+    glogging.log2file(logger, logging.INFO)
+    gdump_ui.logger = logger
+    gdump.logger = logger
     gcom.logger = logger
 
     app = QtWidgets.QApplication(sys.argv)
@@ -32,7 +32,7 @@ try:
     icon.addPixmap(pixm)
     app.setWindowIcon(icon)
 
-    ui = rxdc_ui.gDumpUi()
+    ui = gdump_ui.gDumpUi()
     ui.show()
 
     sys.exit(app.exec_())
@@ -42,4 +42,4 @@ except Exception as err:
     # . traceback.print_exc()
     print('Exception in main_ui: {}'.format(repr(err), exc_info=True))
 
-# <run in Terminal> pyinstaller -Fw main.py -n gdc
+# <run in Terminal> pyinstaller -Fw main.py -n gdump

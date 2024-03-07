@@ -30,6 +30,7 @@ class gDumpUi(QtWidgets.QWidget):
         self.fig    = None  # first assigned in slot_figon
         self.ax     = None  # last  assigned in slot_figon
         self.enext  = Event()
+        self.fnm    = '.init'
 
         ## UI uart
         self.uart_dtct = QtWidgets.QPushButton('Detect')
@@ -76,9 +77,27 @@ class gDumpUi(QtWidgets.QWidget):
 
         ## UI result
         self.result = QtWidgets.QTextBrowser()
+        self.result.setPlaceholderText('Hello World!')
 
         self.init_layout()
         self.init_action()
+
+        if os.path.isfile(self.fnm):
+            with open(self.fnm, 'r') as fr:
+                rls = fr.read().splitlines()
+            self.chidx.setText(rls[0])
+            self.Gidx.setText( rls[1])
+            self.Nrep.setText( rls[2])
+            self.Nmax.setText( rls[3])
+            self.proj.setCurrentIndex(int(rls[4]))
+            self.memsize.setCurrentIndex(int(rls[5]))
+            self.dump.setCurrentIndex(int(rls[6]))
+            self.bits.setText(rls[7])
+            self.hldon.setChecked( 'on' in rls[8])
+            self.figon.setChecked( 'on' in rls[9])
+            self.sv_txt.setChecked('on' in rls[10])
+            self.sv_int.setChecked('on' in rls[11])
+            self.sv_cpx.setChecked('on' in rls[12])
 
     def init_layout(self):
         self.lay0 = QtWidgets.QVBoxLayout()
@@ -193,6 +212,23 @@ class gDumpUi(QtWidgets.QWidget):
     def slot_start(self):
         logger.info('slot_start')
         if 'start' in self.start.text().lower():
+            with open(self.fnm, 'w') as fw:
+                mstr = ''
+                mstr += self.chidx.text().strip() + '\n'
+                mstr += self.Gidx.text().strip() + '\n'
+                mstr += self.Nrep.text().strip() + '\n'
+                mstr += self.Nmax.text().strip() + '\n'
+                mstr += str(self.proj.currentIndex()) + '\n'
+                mstr += str(self.memsize.currentIndex()) + '\n'
+                mstr += str(self.dump.currentIndex()) + '\n'
+                mstr += self.bits.text().strip() + '\n'
+                mstr += ('on' if self.hldon.isChecked()  else 'off') + '\n'
+                mstr += ('on' if self.figon.isChecked()  else 'off') + '\n'
+                mstr += ('on' if self.sv_txt.isChecked() else 'off') + '\n'
+                mstr += ('on' if self.sv_int.isChecked() else 'off') + '\n'
+                mstr += ('on' if self.sv_cpx.isChecked() else 'off')
+                fw.writelines(mstr)
+
             self.start.setText('STOP')
             self.start.setStyleSheet('QPushButton:!hover  { font: normal; color: black; background-color: #f08000 }')
             self.thd = Thread(target=gDumpUi.run, args=(self, ))

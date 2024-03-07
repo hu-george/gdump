@@ -6,3 +6,4 @@ dump/
 __pycache__/
 *.log
 *.spec
+.init
