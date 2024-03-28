@@ -13,7 +13,9 @@ logger = logging.getLogger(__name__)
 
 try:
     # glogging.log2stdout(logger, logging.INFO)
+    # glogging.log2stdout(logger, logging.DEBUG)
     glogging.log2file(logger, logging.INFO)
+    # glogging.log2file(logger, logging.DEBUG)
     gdump_ui.logger = logger
     gdump.logger = logger
     gcom.logger = logger
@@ -40,6 +42,6 @@ except Exception as err:
     import traceback
 
     # . traceback.print_exc()
-    print('Exception in main_ui: {}'.format(repr(err), exc_info=True))
+    logger.error('Exception in main_ui: {}'.format(repr(err), exc_info=True))
 
 # <run in Terminal> pyinstaller -Fw main.py -n gdump

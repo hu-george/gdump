@@ -37,6 +37,7 @@ class gDump():
              ('gdb', ''))
         self.dumps = {'aic8820': dump_8820,
                       'aic8822': dump_8822}
+        self.dlen = 0
 
     def send(self, str):
         return self.com.send(str)
@@ -57,8 +58,11 @@ class gDump():
             return self.write(addr, vnew)
         else:
             return vold
-    def set_rx(self, chidx=0, gidx=3, rx='on'):
-        return self.set_rx_8820(chidx, gidx, rx)
+    def set_rx(self, vprj='aic8820', chidx=0, gidx=3, rx='on'):
+        if '8820' in vprj:
+            return self.set_rx_8820(chidx, gidx, rx)
+        else:
+            return self.set_rx_8822(chidx, gidx, rx)
 
     def set_rx_8820(self, chidx=0, gidx=3, rx='on'):
         if 'of' in rx.lower():
@@ -67,7 +71,7 @@ class gDump():
         else:
             # fix rx pwr
             self.mskset(0x40620508, 0xf1, (int(gidx)<<4)|1)
-            self.mskset(0x40620000, 1, 1<<3)    # dm_sync_fix
+            self.mskset(0x40620000, 0x0c, 0x08)    # dm_sync_fix
             # fix channel
             val = self.read(0x40620020)
             val = val & ~(0x7f<<16) | (int(chidx)<<16)
@@ -96,7 +100,7 @@ class gDump():
         else:
             # fix rx pwr
             self.mskset(0x40620508, 0xf1, (int(gidx)<<4)|1)
-            self.mskset(0x40620000, 1, 1<<3)    # dm_sync_fix
+            self.mskset(0x40620000, 0x0c, 0x08)    # dm_sync_fix
             # fix channel
             val = self.read(0x40620020)
             val = val & ~(0x7f<<16) | (int(chidx)<<16)
@@ -110,7 +114,8 @@ class gDump():
             self.write(0x40620020, val)
             #  pll lock & mdm rxon
             time.sleep(1e-3)
-            if not ((self.read(0x406208a0) >> 29) & 1):
+            #if not ((self.read(0x406208a0) >> 29) & 1):
+            if not ((self.read(0x4062203c) >> 12) & 1):
                 logger.error('set_rx:  pll not lock')
                 return False
             if not ((self.read(0x406218b4) >> 22) & 1):
@@ -238,17 +243,16 @@ class gDump():
         stopdly = 4
         #                           datasel clksel                  ratesel
         dumpsel ={'saradc'          : (0x4, clksel['rxdfe_pre_adc'], 0),
-                 #'sdmadc'          : (0x5, clksel['rxdfe_pre_adc'], 0),
-                  'rxdfe_pst_idat'  : (0x6, clksel['rxdfe_pst_1x' ], 0),
+                  'rxdfe_pst_idat'  : (0x6, clksel['rxdfe_pst_2x' ], 1),
                   'rxdfe_pre_odat'  : (0x7, clksel['rxdfe_pre_2x' ], 1),
                   'agc_din'         : (0xc, clksel['rxdfe_pre_2x' ], 1),
                   'gdb'             : (0x2, clksel['rxdfe_pre_2x' ], 1),
                   'saradc_btrf'     : (0x2, clksel['rxdfe_pre_adc'], 1),
                   'dac_150'         : (0xa, clksel['txdfe_pst_150'], 0),
-                  'txdfe_32m'       : (0xb, clksel['rxdfe_pst_1x' ], 0),
+                  'txdfe_32m'       : (0xb, clksel['rxdfe_pst_2x' ], 1),
                   'txdfe_52m'       : (0x9, clksel['txdfe_pre_52m'], 0)}
         stopsel = {'crce': 4,
-                   'man' : 7,
+                   'man' : 8,
                    'auto': 2,   # rxon pos
                    'rxon': 0,   # rxon neg
                    'txon': 1}   # txon neg
@@ -263,9 +267,13 @@ class gDump():
         #         9: 'gdb'}
         #mode = mdict[int(vsel)]
 
-        if vstop == 'man':
-            # dump start/stop triggered at the same time, <stopdly> control actual stop time
-            stopdly = int(math.floor(vsize*1024/80)-4)
+        #if vstop == 'man':
+        #    # dump start/stop triggered at the same time, <stopdly> control actual stop time
+        #    stopdly = int(math.floor(vsize*1024/80)-4)
+        #    self.dlen = stopdly*80
+        #else:
+        #    self.dlen = 0
+        stopdly = 1
 
         data = dumpsel[vsel]
         # aic8822: 0814[19] = clkinv
@@ -284,9 +292,15 @@ class gDump():
         self.write(0x40100034, 1)         # dump_sel:bt
         self.write(0x40620814, clkinv|r0814)
         self.write(0x40620810, r0810|stop1)    # stop=man, free run
-        self.write(0x40620814, clkinv|r0814|9) # dumpen = 1, stopreg=1
-        while(self.read(0x40620880)>>31):           # wait dump done
-            time.sleep(0.001)
+        self.write(0x40620814, clkinv|r0814|1) # dumpen = 1
+        time.sleep(0.01)
+        self.write(0x40620814, clkinv|r0814|9) # stopreg= 1
+        cnt = 0
+        while((self.read(0x40620880)>>31) and (cnt < 10)):           # wait dump done
+            time.sleep(0.01)
+            cnt += 1
+        if cnt >= 10:
+            return None, None
         self.write(0x40620814, (clkinv|r0814)&0xfffff0f2)  # ramen = 0, dumpen = 0
         addr = self.read(0x40620880)            # end addr
         self.write(0x40620814, clkinv)
@@ -311,11 +325,22 @@ class gDump():
             x0 = ' '.join(lstd)
             x1 = re.split(r'\s+', x0.strip())
             xseq = [int(x, 16) for x in x1]
-            if len(xseq) >= addr:
-                return xseq[0:addr]
+            #if self.dlen > 0:
+            #    if self.dlen <= addr:
+            #        return list(xseq[(addr-self.dlen+1):addr])
+            #    else:
+            #        return list(xseq[(len(xseq)-(self.dlen-addr)+1)]) + list(xseq[0:addr])
+            #elif len(xseq) >= addr:
+            #    return xseq[0:addr]
+            #else:
+            #    logger.error('pre_proc: dump read data lt end_addr')
+            #    return None
+            if addr == len(xseq)-1:
+                return xseq
+            elif addr == len(xseq)-2:
+                return list(xseq[addr+1]) + xseq[0:addr+1]
             else:
-                logger.error('pre_proc: dump read data lt end_addr')
-                return None
+                return xseq[addr+1:] + xseq[0:addr+1]
         else:
             logger.error('pre_proc: dump read addr not continuous')
             return None
@@ -335,7 +360,7 @@ class gDump():
         if (msb[0] < lsb[0]) or (msb[1] < lsb[1]) or (msb[0]-lsb[0] != msb[1]-lsb[1]):
             logger.error('ERROR 1: input i&q bit location {}'.format(fmt))
 
-        width = msb[0] - lsb[0]
+        width = msb[0] - lsb[0] - 1
         max   = 2**width
         msk   = max - 1
         mid   = max / 2
@@ -350,8 +375,7 @@ class gDump():
         x1 = (xi + 1j*xq)/(2**(width-1))
         return x1
 
-    def dcnf(self, x0, ax=None):
-        fs = 160
+    def dcnf(self, x0, fs=160, ax=None):
         N  = len(x0)
         fx, px = signal.periodogram(x0, fs, window='boxcar', detrend=False, nfft=N, scaling='spectrum', return_onesided=False)
         fx = np.fft.fftshift(fx)
@@ -380,7 +404,7 @@ class gDump():
             ax.plot(fx, 10*np.log10(px), '.-', linewidth=1, markersize=5)
             ax.plot(fx[isig], 10*np.log10(px[isig]), 'r.-', lw=1, ms=5)
             if np.sum(iton) > 0:
-                ax.plot(fx[iton], 10*np.log10(px[iton]), 'y*', ms=5)
+                ax.plot(fx[iton], 10*np.log10(px[iton]), 'y*-', lw=1, ms=5)
             ax.set_xlim(-fs/2, +fs/2)
             ax.set_ylabel('power/dbfs')
             ax.set_xlabel('freq/mhz')

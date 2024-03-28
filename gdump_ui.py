@@ -72,6 +72,7 @@ class gDumpUi(QtWidgets.QWidget):
         self.sv_txt  = QtWidgets.QCheckBox('RAW')
         self.sv_int  = QtWidgets.QCheckBox('DAT')
         self.sv_cpx  = QtWidgets.QCheckBox('CPX')
+        self.fs      = QtWidgets.QLineEdit('160.0')
         self.state  = QtWidgets.QLineEdit('idle')
         self.state.setReadOnly(True)
 
@@ -98,6 +99,7 @@ class gDumpUi(QtWidgets.QWidget):
             self.sv_txt.setChecked('on' in rls[10])
             self.sv_int.setChecked('on' in rls[11])
             self.sv_cpx.setChecked('on' in rls[12])
+            self.fs.setText(rls[13])
 
     def init_layout(self):
         self.lay0 = QtWidgets.QVBoxLayout()
@@ -129,10 +131,11 @@ class gDumpUi(QtWidgets.QWidget):
         self.lay4.addWidget(self.start)
 
         self.lay5 = QtWidgets.QHBoxLayout()
-        self.lay5.addWidget(self.sv_txt)
-        self.lay5.addWidget(self.sv_int)
-        self.lay5.addWidget(self.sv_cpx)
-        self.lay5.addWidget(self.state)
+        self.lay5.addWidget(self.sv_txt, 1)
+        self.lay5.addWidget(self.sv_int, 1)
+        self.lay5.addWidget(self.sv_cpx, 1)
+        self.lay5.addWidget(self.fs, 1)
+        self.lay5.addWidget(self.state, 4)
 
         self.lay6 = QtWidgets.QHBoxLayout()
         self.lay6.addLayout(self.lay0, 1)
@@ -167,7 +170,7 @@ class gDumpUi(QtWidgets.QWidget):
             self.ax = self.fig.add_subplot(111)
             self.canvas.draw()
         except Exception as err:
-            print('Exception in gdump_ui.init_plot: {}'.format(repr(err), exc_info=True))
+            logger.error('Exception in gdump_ui.init_plot: {}'.format(repr(err), exc_info=True))
             return False
 
     def init_action(self):
@@ -226,7 +229,8 @@ class gDumpUi(QtWidgets.QWidget):
                 mstr += ('on' if self.figon.isChecked()  else 'off') + '\n'
                 mstr += ('on' if self.sv_txt.isChecked() else 'off') + '\n'
                 mstr += ('on' if self.sv_int.isChecked() else 'off') + '\n'
-                mstr += ('on' if self.sv_cpx.isChecked() else 'off')
+                mstr += ('on' if self.sv_cpx.isChecked() else 'off') + '\n'
+                mstr += str(self.fs.text())
                 fw.writelines(mstr)
 
             self.start.setText('STOP')
@@ -304,7 +308,7 @@ class gDumpUi(QtWidgets.QWidget):
             logger.info('chidx: {}'.format(mlst))
             return mlst
         except Exception as err:
-            print('Exception in gdump_ui.save_parm: {}'.format(repr(err), exc_info=True))
+            logger.error('Exception in gdump_ui.save_parm: {}'.format(repr(err), exc_info=True))
             return []
 
     def run(self):
@@ -322,22 +326,20 @@ class gDumpUi(QtWidgets.QWidget):
             if (len(clst) < 1) or (repn < 1) or (gidx > 3) or (not self.conn):
                 return
 
-            mdir = os.path.join('dump', time.strftime('%Y%m%d_%H%M%S'))
+            mdir = 'dump'
             if self.sv_txt.isChecked() or self.sv_int.isChecked() or self.sv_cpx.isChecked():
-                if os.path.exists(mdir):
-                    logger.error('{} already exist'.format(mdir))
-                else:
+                if not os.path.exists(mdir):
                     os.makedirs(mdir)
 
-            self.dut.set_rx(rx='off')
+            self.dut.set_rx(self.proj.currentText(), rx='off')
             for chidx in clst:
-                self.dut.set_rx(rx='off')
+                self.dut.set_rx(self.proj.currentText(), rx='off')
                 for k in range(repn):
                     self.cnt += 1
                     for n in range(1):
                         logger.info('run: chidx = {}, gidx = {}'.format(chidx, gidx))
                         mfile = os.path.join(mdir, time.strftime('%Y%m%d_%H%M%S'))
-                        if not self.dut.set_rx(chidx, gidx): continue
+                        if not self.dut.set_rx(self.proj.currentText(), chidx, gidx): continue
                         self.state.setText('rxon ok')
                         logger.info('run: rxon ok')
                         (addr, data) = self.dut.dump(self.proj.currentText(), self.dump.currentText(), vsize=msiz)
@@ -346,17 +348,17 @@ class gDumpUi(QtWidgets.QWidget):
                         logger.info('run: dump end_addr = {}, data_len = {}'.format(addr, len(data)))
                         if self.sv_txt.isChecked():
                             with open(mfile+'_txt.dat', 'w') as fw:
-                                fw.writelines('end_addr = {}'.format(addr))
+                                fw.writelines('[0x40620880] = 0x{:08x}'.format(addr))
                                 fw.write(data)
                         xseq = self.dut.pre_proc(addr, data)
+                        if xseq is None: continue
+                        self.state.setText('dump end = {}, num = {}'.format(addr, len(xseq)))
                         if self.sv_int.isChecked():
                             with open(mfile+'_int.dat', 'w') as fw:
                                 sw = [str(x) for x in xseq]
                                 fw.write('\n'.join(sw))
                                 #for x in xseq:
                                 #    fw.writelines('{:d}\n'.format(x))
-                        self.state.setText('dump end = {}, num = {}'.format(addr, len(xseq)))
-                        if xseq is None: continue
                         x0 = self.dut.pst_proc(xseq, self.bits.text())
                         if self.sv_cpx.isChecked():
                             with open(mfile+'_cpx.dat', 'w') as fw:
@@ -364,11 +366,12 @@ class gDumpUi(QtWidgets.QWidget):
                                 fw.write('\n'.join(sw))
                                 #for x in x0:
                                 #    fw.writelines('{:f}  {:f}\n'.format(x.real, x.imag))
+                        fs = float(self.fs.text())
                         if self.figon.isChecked() and (self.ax is not None):
-                            psig, pdc, pton = self.dut.dcnf(x0, self.ax)
+                            psig, pdc, pton = self.dut.dcnf(x0, fs, self.ax)
                             self.canvas.draw()
                         else:
-                            psig, pdc, pton = self.dut.dcnf(x0, None)
+                            psig, pdc, pton = self.dut.dcnf(x0, fs, None)
                         mstr = '[{}] {}-{}: sig = {:.1f}, dc = {:.1f}'.format(self.cnt, 2402+chidx, gidx, psig, pdc)
                         if pton is not None:
                             mstr += ', tone = {:.1f}'.format(pton)
@@ -380,13 +383,13 @@ class gDumpUi(QtWidgets.QWidget):
                         return -1
                     if not self.hldon.isChecked():
                         self.dut.set_rx(rx='off')
-                    if self.figon.isChecked():
+                    if self.figon.isChecked() and (len(clst) > 1 or repn > 1):
                         self.state.setText('Click Next to run-next')
                         self.enext.wait()
                         self.enext.clear()
             self.slot_start()
         except Exception as err:
-            print('Exception in gdump_ui.run: {}'.format(repr(err), exc_info=True))
+            logger.error('Exception in gdump_ui.run: {}'.format(repr(err), exc_info=True))
             self.state.setText('Error in run, stopped')
             return False
 
@@ -399,4 +402,4 @@ class gDumpUi(QtWidgets.QWidget):
             if (vsb_cur > vsb_max - 10) and (vsb_max != 0):
                 vsb.setSliderPosition(vsb.maximum())
         except Exception as err:
-            logger.exception('Exception in add_result()', exc_info=True)
+            logger.error('Exception in add_result()', exc_info=True)

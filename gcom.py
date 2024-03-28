@@ -135,6 +135,8 @@ class gCom:
             self.send(mstr)
             # wait [read] done
             rstr = self.wait('[0x{:08x}] = 0x'.format(addr))
+            if rstr is None:
+                rstr = ''
             mch_obj = re.search(r' = 0x([a-f0-9]{8})', rstr)
             if (mch_obj is None) or (mch_obj.group(1) is None):
                 logger.info('gcom.read: {} = {}'.format(mstr, 'fail'))
